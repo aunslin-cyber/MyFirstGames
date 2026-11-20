@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LibraryTown – เมืองห้องสมุดเตรียมสอบภาษาอังกฤษ</title>
+<!-- ไฟล์เดียว ไม่พึ่งอินเทอร์เน็ต: เปิดแบบออฟไลน์ได้ (ใช้ CSS เอง + Canvas + Web Audio) -->
+<style>
+:root{--ink:#4a3426;--cream:#fff4e0;--peach:#ffd6a5;--rose:#fdb7b0;--mint:#bfe3c6;--sky:#bcdcf7;--gold:#f2a33a;--line:#ecd2a8}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--cream);color:var(--ink);font-family:"Prompt","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif;overflow:hidden}
+#hud{height:48px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#fff8ea;border-bottom:3px solid var(--line);font-weight:700;font-size:.95rem}
+#hud span{white-space:nowrap}#hud .sp{flex:1}
+.ib{font:inherit;cursor:pointer;border:2px solid var(--line);background:#fff;border-radius:12px;padding:4px 10px}
+#c{display:block;margin:0 auto;width:min(100vw,calc((100vh - 48px)*900/520));aspect-ratio:900/520;touch-action:none;background:#cfe9ff}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 16px;border-radius:99px;font-size:.9rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:9;max-width:92vw;text-align:center}
+#toast.on{opacity:1}
+#ov{position:fixed;inset:0;background:rgba(74,52,38,.45);display:none;align-items:center;justify-content:center;padding:12px;z-index:5}
+#ov.on{display:flex}
+.m{background:var(--cream);border:3px solid var(--gold);border-radius:22px;max-width:620px;width:100%;max-height:92vh;overflow:auto;padding:18px;line-height:1.6}
+.m h2{margin:0 0 8px}
+.btn{font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:12px;padding:9px 18px;background:var(--gold);color:var(--ink);box-shadow:0 3px 0 #b87413;margin:8px 8px 0 0}
+.btn.alt{background:#fff;border:2px solid var(--line);box-shadow:none}
+.paper{background:#fff;border:2px solid var(--line);border-radius:10px;padding:16px;box-shadow:0 10px 0 -4px #f1dcb6;transform-origin:top;animation:open .5s ease-out}
+@keyframes open{from{transform:perspective(700px) rotateX(-80deg);opacity:0}to{transform:perspective(700px) rotateX(0);opacity:1}}
+.tb{height:10px;background:#f1dfba;border-radius:99px;overflow:hidden;margin:6px 0 10px}.tb i{display:block;height:100%;background:#2a8f86;width:100%}
+.o{display:block;width:100%;text-align:left;font:inherit;cursor:pointer;background:#fff;border:2px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:7px}
+.o:hover{border-color:#2a8f86}.o.r{background:#dff3e3;border-color:#3f8f4f}.o.w{background:#fbe3e1;border-color:#b83a3a;animation:sh .3s}
+@keyframes sh{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.fb{background:#fff;border-left:5px solid #2a8f86;padding:8px 12px;border-radius:10px;margin-top:6px}
+.sum li{margin-bottom:6px}.sum code{background:#ffe9bf;padding:1px 6px;border-radius:6px}
+.bar{height:10px;background:#f1dfba;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--gold)}
+.row{display:flex;justify-content:space-between;gap:8px;font-size:.9rem;margin-top:6px}
+.sub{font-size:.85rem;opacity:.75}
+@media(prefers-reduced-motion:reduce){.paper,.o.w{animation:none}}
+</style>
+</head>
+<body>
+<div id="hud"><span id="hs">⭐ 0/100</span><span id="hc">🪙 0</span><span id="hf"></span><span class="sp"></span><button class="ib" id="bd">📊 ผลการเรียนรู้</button><button class="ib" id="bs">🔊</button></div>
+<canvas id="c" width="1800" height="1040"></canvas>
+<div id="toast"></div><div id="ov"></div>
+
+<script>
+/* ================================================================
+ 1) ข้อมูลเนื้อหา — ครูแก้ไขได้ที่นี่
+    แต่ละหัวข้อ: n=ชื่อ, ic=ไอคอน, c=สีตู้, s=สรุป (HTML), q=ข้อสอบ
+    รูปแบบข้อสอบ: [โจทย์, [ตัวเลือก], ดัชนีคำตอบที่ถูก (เริ่มที่ 0), คำอธิบาย]
+    ต้องมี 5 ข้อต่อหัวข้อ x 6 หัวข้อ = 30 ข้อ (30 โต๊ะสอบ)
+================================================================ */
+const TOPICS=[
+{n:"Tenses",ic:"⏰",c:"#ffcf9e",s:[
+"<b>Present Perfect</b> = have/has + V3 ใช้กับเหตุการณ์ที่เริ่มในอดีตและต่อเนื่องถึงปัจจุบัน มักมี <code>since / for</code>",
+"<b>Past Continuous</b> = was/were + V-ing ใช้เมื่อมีเหตุการณ์แทรกกลางการกระทำ",
+"<b>Future Perfect</b> = will have + V3 ใช้กับสิ่งที่จะเสร็จก่อนเวลาในอนาคต (<code>by next year</code>)",
+"<code>Look! / now / at the moment</code> มักบอก Present Continuous"],q:[
+["She ___ in Bangkok since 2020.",["lives","has lived","lived","is living"],1,"มี since จึงใช้ Present Perfect → has lived"],
+["I ___ TV when the phone rang.",["watched","watch","was watching","have watched"],2,"กำลังทำอยู่แล้วมีเหตุการณ์แทรก → Past Continuous"],
+["By next year, they ___ the building.",["will finish","will have finished","finish","are finishing"],1,"By + เวลาอนาคต → Future Perfect"],
+["Look! It ___ now.",["rains","rained","is raining","has rained"],2,"Look! / now → Present Continuous"],
+["They ___ football every Sunday.",["play","are playing","played","have played"],0,"กิจวัตรที่ทำเป็นประจำ → Present Simple"]]},
+{n:"Conditionals",ic:"🔀",c:"#f9c0c0",s:[
+"<b>Type 0</b> ข้อเท็จจริง: If + present, present",
+"<b>Type 1</b> เป็นไปได้ในอนาคต: If + present, will + V1 (<code>Unless</code> = If not)",
+"<b>Type 2</b> สมมติตรงข้ามปัจจุบัน: If + past, would + V1 (ใช้ <code>were</code> กับทุกประธาน)",
+"<b>Type 3</b> สมมติตรงข้ามอดีต: If + had + V3, would have + V3"],q:[
+["If I ___ you, I would study more.",["am","was","were","be"],2,"Type 2 ใช้ were กับทุกประธาน"],
+["If it rains tomorrow, we ___ the picnic.",["would cancel","will cancel","cancelled","had cancelled"],1,"Type 1 → will + V1"],
+["If she had studied, she ___ the exam.",["would pass","will pass","would have passed","passed"],2,"Type 3 → would have + V3"],
+["Water boils if you ___ it to 100°C.",["heat","heated","will heat","would heat"],0,"Type 0 ข้อเท็จจริง → present simple"],
+["Unless you hurry, you ___ the bus.",["will miss","would miss","missed","miss not"],0,"Unless = If not (Type 1) → will + V1"]]},
+{n:"Passive Voice",ic:"🔁",c:"#c8e6c9",s:[
+"สูตรหลัก: <b>be + V3</b> เน้นผู้ถูกกระทำ",
+"Present: is/are + V3 · Past: was/were + V3",
+"Future: will be + V3 · Present Perfect: has/have been + V3",
+"ผู้กระทำใส่หลัง <code>by</code> ได้ถ้าจำเป็น"],q:[
+["The letter ___ yesterday.",["sent","was sent","is sent","has sent"],1,"yesterday → Past Passive: was sent"],
+["English ___ in many countries.",["speaks","is spoken","spoke","is speaking"],1,"ข้อเท็จจริงปัจจุบัน → is spoken"],
+["The bridge ___ by next month.",["will be completed","completes","is completing","completed"],0,"อนาคต + passive → will be + V3"],
+["The report has ___ by the team.",["write","wrote","written","been written"],3,"Present Perfect Passive → has been + V3"],
+["The windows ___ every week.",["clean","are cleaned","cleaned","cleaning"],1,"ประจำ + ถูกกระทำ → are cleaned"]]},
+{n:"Reported Speech",ic:"💬",c:"#bcdcf7",s:[
+"เลื่อน tense ถอยหลังหนึ่งขั้น: am/is → <code>was</code>, will → <code>would</code>, have → <code>had</code>",
+"คำบอกเวลา: tomorrow → <code>the next day</code>, yesterday → <code>the day before</code>",
+"Wh-question ใช้ลำดับประโยคบอกเล่า: asked me <b>where I lived</b>",
+"คำสั่ง: told + คน + (not) to + V1"],q:[
+["She said, \"I am tired.\" → She said she ___ tired.",["is","was","were","has been"],1,"am → was"],
+["He asked, \"Where do you live?\" → He asked me where I ___.",["live","do live","lived","did live"],2,"Wh-question ไม่ใช้ do/did และเลื่อนเป็น past"],
+["\"I will call you tomorrow.\" → He said he would call me ___.",["tomorrow","the next day","yesterday","next day ago"],1,"tomorrow → the next day"],
+["\"Don't be late,\" said the teacher. → She told us ___ late.",["don't be","not be","not to be","to not being"],2,"คำสั่งปฏิเสธ → not to + V1"],
+["She said, \"I have finished.\" → She said she ___ finished.",["has","had","have","was"],1,"have → had"]]},
+{n:"Relative Clauses",ic:"🔗",c:"#e0cffc",s:[
+"<b>who</b> แทนคน · <b>which</b> แทนสิ่งของ · <b>that</b> ได้ทั้งคนและสิ่งของ (defining clause)",
+"<b>whose</b> แสดงความเป็นเจ้าของ · <b>where</b> แทนสถานที่",
+"Non-defining clause ใส่คอมมา และ <b>ห้ามใช้ that</b>",
+"Object relative pronoun ตัดทิ้งได้: the book (that) I read"],q:[
+["The man ___ lives next door is a doctor.",["which","whose","who","whom"],2,"แทนคนที่เป็นประธาน → who"],
+["This is the book ___ I told you about.",["who","that","whose","what"],1,"แทนสิ่งของ → that/which"],
+["That's the girl ___ bag was stolen.",["who","which","whose","that"],2,"บอกความเป็นเจ้าของ → whose"],
+["Bangkok, ___ is the capital, is very busy.",["that","which","who","whose"],1,"มีคอมมา ห้ามใช้ that → which"],
+["The place ___ we met was a café.",["who","where","whose","which"],1,"แทนสถานที่ → where"]]},
+{n:"Word Forms",ic:"🔤",c:"#fff0a8",s:[
+"Noun: -tion, -ment, -ness เช่น decide → <b>decision</b>",
+"Adjective: -ful, -ous, -able เช่น success → <b>successful</b>",
+"Adverb: adj + -ly ขยายกริยา เช่น confident → <b>confidently</b>",
+"ดูตำแหน่ง: หน้า noun = adj · หลังกริยา = adv · หลัง the/her = noun"],q:[
+["She is a very ___ student. (success)",["success","successful","successfully","succeed"],1,"ขยาย noun → adjective"],
+["He spoke ___ at the meeting. (confident)",["confident","confidence","confidently","confide"],2,"ขยายกริยา → adverb"],
+["\"Reliable\" มีความหมายใกล้เคียงที่สุดกับ…",["dependable","careless","expensive","temporary"],0,"reliable = dependable (พึ่งพาได้)"],
+["The ___ was difficult to make. (decide)",["decide","decisive","decision","decisively"],2,"the + noun → decision"],
+["Her ___ to learn impressed us. (willing)",["willing","willingly","willingness","will"],2,"her + noun → willingness"]]}
+];
+/* รวมข้อสอบ 30 ข้อ: โต๊ะที่ i ใช้ข้อ i (สลับหัวข้อเวียนกันไป) */
+const QS=[];for(let k=0;k<5;k++)TOPICS.forEach((t,ti)=>{const x=t.q[k];QS.push({t:ti,q:x[0],o:x[1],a:x[2],e:x[3]})});
+const TIPS=["AI ตอบผิดได้ ตรวจกับตำราหรือครูอีกครั้งเสมอ","ลองทำข้อสอบเองก่อน แล้วค่อยให้ AI อธิบายข้อที่พลาด","ก่อนเชื่อข้อมูลออนไลน์ ถามว่า ใครเขียน? มีแหล่งอ้างอิงไหม?"];
+
+/* ================================================================
+ 2) สถานะเกม + LocalStorage + เสียง
+================================================================ */
+const KEY="librarytown_v2",PASS=.7,TOTAL=100;
+let S=ld();
+function fr(b){return{a:{},r:[],h:[],coins:0,best:b||{acc:0,st:0},snd:S?S.snd:1}}
+function ld(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.a)return d}catch(e){}return{a:{},r:[],h:[],coins:0,best:{acc:0,st:0},snd:1}}
+const sv=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const stars=()=>Object.values(S.a).reduce((n,x)=>n+x.s,0)+S.r.length+S.h.length;
+let AC;
+function tone(f,d,ty,dl){if(!S.snd)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime+(dl||0);o.type=ty||"sine";o.frequency.value=f;g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d)}catch(e){}}
+const sfx={ok(){tone(660,.15);tone(880,.2,0,.12)},bad(){tone(180,.3,"sawtooth")},star(){[784,988,1175].forEach((f,i)=>tone(f,.15,0,i*.09))},step(){tone(300,.05,"triangle")}};
+const $=s=>document.querySelector(s),ov=$("#ov");
+let tt;function toast(m){const t=$("#toast");t.textContent=m;t.className="on";clearTimeout(tt);tt=setTimeout(()=>t.className="",2600)}
+const shuf=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+function hud(){$("#hs").textContent=`⭐ ${stars()}/${TOTAL}`;$("#hc").textContent=`🪙 ${S.coins}`;$("#bs").textContent=S.snd?"🔊":"🔇";
+ $("#hf").textContent=scene==="in"?`🏢 ชั้น ${Math.round(P.f)}`:scene==="out"?"🌆 ถนนหน้าห้องสมุด":""}
+function modal(h){ov.innerHTML=`<div class="m">${h}</div>`;ov.className="on"}
+function closeM(){ov.className="";clearInterval(qt)}
+
+/* ================================================================
+ 3) โลกจำลอง: เมือง (ภายนอก) + ตึกห้องสมุด 10 ชั้น (ภาพตัดขวาง)
+    ชั้น 1 = ห้องสรุปเนื้อหา (ตู้ละหัวข้อ) · ชั้น 2 = ห้องสอบ 30 โต๊ะ
+    ชั้น 3–10 = ห้องอ่านหนังสือสไตล์ญี่ปุ่น (ซ่อนดาวโบนัสชั้น 3,5,7,9)
+================================================================ */
+const VW=900,VH=520,FW=1900,FH=150,NF=10,SX=60,DOORX=630;
+const fy=f=>60+(NF-f+1)*FH;
+let scene="start",P={x:300,f:1,d:1,w:0},tg=null,camX=0,camY=0,keys={},T=0;
+const cv=$("#c"),ctx=cv.getContext("2d");
+function objs(f){const o=[];
+ if(f===1){o.push({k:"exit",x:170});TOPICS.forEach((t,i)=>o.push({k:"lk",id:i,x:380+i*250}))}
+ if(f===2)for(let i=0;i<30;i++)o.push({k:"dk",id:i,x:170+i*56});
+ if(f>=3&&f<=9&&f%2)o.push({k:"st",id:f,x:700+f*90});
+ return o}
+
+/* ---------- การควบคุม: คลิก/แตะ เพื่อเดิน + ลูกศร/WASD ---------- */
+cv.addEventListener("pointerdown",e=>{
+ if(scene==="start"||ov.className)return;
+ const r=cv.getBoundingClientRect(),sx=(e.clientX-r.left)/r.width*VW,sy=(e.clientY-r.top)/r.height*VH;
+ if(scene==="out"){const b=sx>480&&sx<780&&sy<440;tg={f:1,x:b?DOORX:sx,door:b};return}
+ const wx=sx+camX,wy=sy+camY;
+ for(let f=1;f<=NF;f++)if(wy<=fy(f)+8&&wy>fy(f)-FH){
+  let best=null,bd=40;objs(f).forEach(o=>{const d=Math.abs(o.x-wx);if(d<bd){bd=d;best=o}});
+  tg=best?{f,x:best.x,o:best}:{f,x:Math.max(30,Math.min(FW-30,wx))};return}});
+addEventListener("keydown",e=>{
+ if(ov.className)return;const k=e.key;
+ if(k==="ArrowLeft"||k==="a")keys.l=1;if(k==="ArrowRight"||k==="d")keys.r=1;
+ if(k==="ArrowUp"||k==="w"){if(scene==="out"&&Math.abs(P.x-DOORX)<60)enter();else if(scene==="in"&&P.x<120)tg={f:Math.min(NF,Math.round(P.f)+1),x:P.x}}
+ if((k==="ArrowDown"||k==="s")&&scene==="in"&&P.x<120)tg={f:Math.max(1,Math.round(P.f)-1),x:P.x}});
+addEventListener("keyup",e=>{const k=e.key;if(k==="ArrowLeft"||k==="a")keys.l=0;if(k==="ArrowRight"||k==="d")keys.r=0});
+
+function enter(){scene="in";P={x:260,f:1,d:1,w:0};tg=null;toast("ชั้น 1: ห้องสรุปเนื้อหา แตะตู้เพื่ออ่าน · เดินไปบันไดซ้ายสุดเพื่อขึ้นชั้น 2 ห้องสอบ")}
+function act(t){
+ if(scene==="out"){if(t.door)enter();return}
+ const o=t.o;if(!o)return;
+ if(o.k==="exit"){scene="out";P.x=DOORX;P.f=1;tg=null;toast("ออกมาที่ถนนแล้ว แตะประตูเพื่อกลับเข้าห้องสมุด")}
+ else if(o.k==="lk")openSum(o.id);
+ else if(o.k==="dk"){if(S.a[o.id])toast(S.a[o.id].c?"โต๊ะนี้ตอบถูกแล้ว ✓":"โต๊ะนี้ทำไปแล้ว (ตอบผิด)");else openQ(o.id)}
+ else if(o.k==="st"){if(S.h.includes(o.id))return;S.h.push(o.id);sv();sfx.star();toast("พบดาวโบนัสที่ซ่อนอยู่! ⭐ +1");hud()}}
+
+function upd(dt){
+ T+=dt;if(scene==="start"||ov.className){return}
+ let mv=0;const out=scene==="out",lo=out?40:30,hi=out?860:FW-30;
+ if(keys.l||keys.r){tg=null;P.f=Math.round(P.f);mv=(keys.r?1:0)-(keys.l?1:0)}
+ else if(tg){
+  if(Math.abs(P.f-tg.f)>.001){
+   if(Math.abs(P.x-SX)>5)mv=Math.sign(SX-P.x);
+   else{const s=Math.sign(tg.f-P.f);P.f+=s*Math.min(3*dt,Math.abs(tg.f-P.f));P.w+=dt*14}}
+  else if(Math.abs(P.x-tg.x)>5)mv=Math.sign(tg.x-P.x);
+  else{const t=tg;tg=null;act(t)}}
+ if(mv){P.x=Math.max(lo,Math.min(hi,P.x+mv*190*dt));P.d=mv;P.w+=dt*12}
+ if(scene==="in"){camX=Math.max(0,Math.min(FW-VW,P.x-VW/2));camY=Math.max(0,Math.min(fy(1)+60-VH,fy(P.f)-360))}
+ hud()}
+
+/* ================================================================
+ 4) การวาด (Canvas การ์ตูนพาสเทล)
+================================================================ */
+function rr(x,y,w,h,r,c){ctx.fillStyle=c;ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);ctx.fill()}
+function txt(s,x,y,sz,c,al){ctx.font=`700 ${sz}px "Prompt","Noto Sans Thai",Tahoma,sans-serif`;ctx.fillStyle=c||"#4a3426";ctx.textAlign=al||"center";ctx.fillText(s,x,y)}
+function person(x,y,d,w){
+ ctx.save();ctx.translate(x,y);ctx.scale(1.25*d,1.25);
+ ctx.fillStyle="rgba(0,0,0,.15)";ctx.beginPath();ctx.ellipse(0,0,16,5,0,0,7);ctx.fill();
+ const sw=Math.sin(w)*7;ctx.strokeStyle="#5b4636";ctx.lineWidth=5;ctx.lineCap="round";
+ ctx.beginPath();ctx.moveTo(-4,-14);ctx.lineTo(-4+sw,-2);ctx.moveTo(4,-14);ctx.lineTo(4-sw,-2);ctx.stroke();
+ rr(-11,-42,22,30,9,"#f2a33a");rr(-14,-36,6,16,3,"#e08f25");
+ ctx.fillStyle="#ffdcbc";ctx.beginPath();ctx.arc(0,-54,12,0,7);ctx.fill();
+ ctx.fillStyle="#4a3426";ctx.beginPath();ctx.arc(0,-56,12,Math.PI,0);ctx.fill();
+ ctx.beginPath();ctx.arc(5,-53,1.8,0,7);ctx.fill();ctx.restore()}
+function skyG(h){const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,"#bcdcf7");g.addColorStop(1,"#fff0d4");return g}
+
+function drawOut(){
+ ctx.fillStyle=skyG(440);ctx.fillRect(0,0,VW,440);
+ ctx.fillStyle="#ffd98a";ctx.beginPath();ctx.arc(120,80,40,0,7);ctx.fill();
+ for(let i=0;i<3;i++){const x=((T*10+i*330)%1100)-120;rr(x,50+i*35,110,28,14,"#fff");rr(x+25,36+i*35,60,30,15,"#fff")}
+ [[20,260,70],[110,300,60],[820,280,70]].forEach(b=>rr(b[0],b[1],b[2],440-b[1],6,"#e9d8f2"));
+ // ตึกห้องสมุดสูง 10 ชั้น
+ rr(480,40,300,400,10,"#f7d9c4");rr(465,28,330,22,8,"#e8a98a");rr(560,0,140,30,10,"#fdb7b0");txt("LibraryTown",630,22,17,"#4a3426");
+ for(let r=0;r<10;r++)for(let c=0;c<3;c++){rr(510+c*85,62+r*34,56,22,5,r===9||r===8?"#ffe6a7":"#bfe3f6")}
+ rr(595,360,70,80,8,"#a8704a");ctx.fillStyle="#ffd98a";ctx.beginPath();ctx.arc(655,402,4,0,7);ctx.fill();
+ if(!tg)txt("แตะประตู ⬇ เพื่อเข้า",630,350+Math.sin(T*4)*4,12,"#c4533a");
+ // ต้นไม้ + คาเฟ่
+ rr(150,330,110,110,8,"#cfe8d4");rr(140,322,130,16,6,"#7fbf92");txt("☕ คาเฟ่",205,395,15,"#4a3426");
+ [310,430,820].forEach(t=>{rr(t-4,400,8,40,3,"#8b5e3c");ctx.fillStyle="#9ad1a7";ctx.beginPath();ctx.arc(t,390,24,0,7);ctx.fill()});
+ // ฟุตบาท + ถนน
+ ctx.fillStyle="#f0e2cc";ctx.fillRect(0,440,VW,30);ctx.fillStyle="#b9b4ba";ctx.fillRect(0,470,VW,50);
+ ctx.fillStyle="#fff";for(let x=0;x<VW;x+=60)ctx.fillRect(x+((T*40)%60),494,30,4);
+ [[0,"#fdb7b0",70],[1,"#bcdcf7",-50]].forEach(c=>{const x=((T*c[2]+c[0]*400)%1100+1100)%1100-100,y=c[2]>0?476:500;rr(x,y,70,24,8,c[1]);rr(x+14,y-10,40,14,6,c[1]);ctx.fillStyle="#4a3426";ctx.beginPath();ctx.arc(x+16,y+24,6,0,7);ctx.arc(x+54,y+24,6,0,7);ctx.fill()});
+ person(P.x,452,P.d,P.w)}
+
+const WALL=["#fde2e4","#e2f0cb","#d6e6ff","#fff1c1","#e8dff5"];
+function drawIn(){
+ ctx.fillStyle=skyG(VH);ctx.fillRect(0,0,VW,VH);
+ ctx.save();ctx.translate(-camX,-camY);
+ rr(0,36,FW,28,8,"#e8a98a");
+ for(let f=NF;f>=1;f--){
+  const b=fy(f),t=b-FH;ctx.fillStyle=WALL[f%5];ctx.fillRect(0,t,FW,FH);
+  for(let x=260;x<FW;x+=300){const g=ctx.createLinearGradient(0,t+22,0,t+92);g.addColorStop(0,"#9fd0f5");g.addColorStop(1,"#e3f2ff");ctx.fillStyle=g;ctx.fillRect(x,t+22,120,70);
+   ctx.strokeStyle="#a8704a";ctx.lineWidth=4;ctx.strokeRect(x,t+22,120,70);ctx.beginPath();ctx.moveTo(x+60,t+22);ctx.lineTo(x+60,t+92);ctx.moveTo(x,t+57);ctx.lineTo(x+120,t+57);ctx.stroke()}
+  if(f>=3)for(let x=140;x<FW;x+=300){rr(x,b-74,100,70,4,"#c9966b");for(let i=0;i<8;i++){rr(x+6+i*11,b-70+(i%2)*4,8,30,2,["#fdb7b0","#bfe3c6","#bcdcf7","#ffd6a5"][i%4]);rr(x+6+i*11,b-36,8,28,2,["#bcdcf7","#fff0a8","#fdb7b0","#bfe3c6"][i%4])}}
+  ctx.fillStyle="#b98a5e";ctx.fillRect(0,b,FW,12);
+  // บันได (ซ้ายสุด)
+  for(let i=0;i<6;i++){ctx.fillStyle=i%2?"#e0b98a":"#d4a574";ctx.fillRect(18+i*14,b-i*12-12,14,i*12+12)}
+  txt(`ชั้น ${f}`,SX+4,t+20,15,"#7b5a3c");
+  txt(f===1?"ห้องสรุปเนื้อหา":f===2?"ห้องสอบ (30 โต๊ะ)":"ห้องอ่านหนังสือ",110,t+40,12,"#7b5a3c","left");
+  objs(f).forEach(o=>{
+   if(o.k==="exit"){rr(o.x-30,b-95,60,95,8,"#a8704a");txt("ทางออก",o.x,b-100,13,"#c4533a")}
+   else if(o.k==="lk"){const t0=TOPICS[o.id],rd=S.r.includes(o.id);rr(o.x-45,b-120,90,120,10,t0.c);ctx.strokeStyle="#4a3426";ctx.lineWidth=2;ctx.strokeRect(o.x-45,b-120,90,120);txt(t0.ic,o.x,b-72,34);txt(t0.n,o.x,b-30,13);if(rd)txt("✓ อ่านแล้ว",o.x,b-128,12,"#3f8f4f")}
+   else if(o.k==="dk"){const a=S.a[o.id],c=a?(a.c?"#bfe3c6":"#fdb7b0"):"#fff";
+    rr(o.x-5,b-30,10,30,2,"#a8704a");rr(o.x-22,b-40,44,10,4,"#d4a574");rr(o.x-12,b-52,24,12,2,c);txt(a?(a.c?"✓":"✗"):String(o.id+1),o.x,b-42,11,"#7b5a3c");
+    if(a&&a.s)txt("⭐".repeat(a.s),o.x,b-62,10)}
+   else if(o.k==="st"&&!S.h.includes(o.id))txt("⭐",o.x,b-50+Math.sin(T*3)*6,30)});
+ }
+ person(P.x,fy(P.f)-2,P.d,P.w);ctx.restore()}
+
+function draw(){ctx.setTransform(2,0,0,2,0,0);ctx.clearRect(0,0,VW,VH);if(scene==="in")drawIn();else drawOut()}
+let last=0;function loop(t){const dt=Math.min(.05,(t-last)/1000||0);last=t;upd(dt);draw();requestAnimationFrame(loop)}
+
+/* ================================================================
+ 5) ห้องสรุป (ชั้น 1) และห้องสอบ (ชั้น 2)
+================================================================ */
+function openSum(i){
+ const t=TOPICS[i];
+ if(!S.r.includes(i)){S.r.push(i);S.coins+=5;sv();sfx.star();toast("อ่านครั้งแรก ⭐ +1 และ 🪙 +5");hud()}
+ modal(`<h2>${t.ic} ${t.n}</h2><ul class="sum">${t.s.map(x=>`<li>${x}</li>`).join("")}</ul><div class="sub">ทบทวนเสร็จแล้ว ขึ้นบันไดซ้ายสุดไปชั้น 2 เพื่อทำข้อสอบ</div><button class="btn" onclick="closeM()">ปิด</button>`)}
+
+let qt;
+function openQ(id){
+ const q=QS[id];let left=30,hint=0,done=0;const ord=shuf(q.o.map((_,i)=>i));
+ modal(`<div class="paper"><div class="sub">โต๊ะ ${id+1} / 30 · ${TOPICS[q.t].n}</div><div class="tb"><i id="tb"></i></div>
+ <h2>${q.q}</h2>${ord.map(i=>`<button class="o" data-i="${i}">${q.o[i]}</button>`).join("")}<div id="fb"></div>
+ <button class="btn alt" id="hb">💡 คำใบ้ (ได้ดาวน้อยลง)</button></div>`);
+ const bs=[...ov.querySelectorAll(".o")];
+ function fin(ci){
+  if(done)return;done=1;clearInterval(qt);const ok=ci===q.a,s=ok?(hint?1:left>=15?3:2):0;
+  S.a[id]={c:ok?1:0,s};if(ok)S.coins+=10;sv();ok?(sfx.ok(),s&&setTimeout(sfx.star,350)):sfx.bad();
+  bs.forEach(b=>{const i=+b.dataset.i;b.style.visibility="visible";if(i===q.a)b.classList.add("r");else if(i===ci)b.classList.add("w")});
+  $("#hb").remove();
+  $("#fb").innerHTML=`<div class="fb"><b>${ok?`ถูกต้อง! ได้ ${"⭐".repeat(s)} +10 🪙`:ci<0?"หมดเวลา":"ยังไม่ถูก"}</b><br>${q.e}</div><button class="btn" id="nx">ปิดกระดาษข้อสอบ</button>`;
+  hud();$("#nx").onclick=()=>{closeM();if(Object.keys(S.a).length>=30)showEnd()}}
+ bs.forEach(b=>b.onclick=()=>fin(+b.dataset.i));
+ $("#hb").onclick=()=>{if(done||hint)return;hint=1;shuf(bs.filter(b=>+b.dataset.i!==q.a)).slice(0,2).forEach(b=>b.style.visibility="hidden");$("#hb").disabled=true}; // 50:50 ซ่อนตัวเลือกผิด 2 ข้อ
+ qt=setInterval(()=>{left-=.1;$("#tb").style.width=Math.max(0,left/30*100)+"%";if(left<=0)fin(-1)},100)}
+
+/* ================================================================
+ 6) Dashboard + หน้าสรุปผล (Accuracy, ข้อเสนอแนะรายบุคคล, ตราประทับ)
+================================================================ */
+function stats(){
+ const A=Object.values(S.a),n=A.length,c=A.filter(x=>x.c).length,acc=n?c/n:0;
+ const per=TOPICS.map((t,ti)=>{const ids=QS.map((q,i)=>q.t===ti?i:-1).filter(i=>i>=0),d=ids.filter(i=>S.a[i]),k=d.filter(i=>S.a[i].c).length;return{t,n:d.length,k,all:d.length===ids.length,acc:d.length?k/d.length:null}});
+ const weak=per.filter(p=>p.acc!==null&&p.acc<PASS).sort((a,b)=>a.acc-b.acc);
+ const adv=!n?"ยังไม่มีข้อมูล ลองทำข้อสอบที่ชั้น 2 ดูนะ":weak.length?`ควรกลับไปอ่านสรุปที่ชั้น 1: ${weak.map(w=>`<b>${w.t.n}</b> (${Math.round(w.acc*100)}%)`).join(", ")}`:"ยอดเยี่ยม! ทุกหัวข้อที่ทำแล้วผ่านเกณฑ์ 70% ลองตอบให้เร็วโดยไม่ใช้คำใบ้เพื่อได้ 3 ดาว";
+ const badges=per.filter(p=>p.all&&p.acc>=.8).map(p=>`🏅 ${p.t.n}`);if(S.best.acc>=PASS)badges.push("🎓 ผ่านเกณฑ์ 70%");
+ return `<div class="row"><span>⭐ ดาวสะสม <b>${stars()}/${TOTAL}</b></span><span>🪙 เหรียญทอง <b>${S.coins}</b></span></div>
+ <div class="row"><span>ตอบแล้ว ${n}/30 ข้อ</span><span>Accuracy <b>${Math.round(acc*100)}%</b></span></div>
+ <div class="bar"><i style="width:${acc*100}%"></i></div>
+ ${per.map(p=>`<div class="row"><span>${p.t.ic} ${p.t.n}</span><span>${p.n?`${p.k}/${p.n} (${Math.round(p.acc*100)}%)`:"–"}</span></div>`).join("")}
+ <div class="fb" style="margin-top:10px">💡 ${adv}</div>
+ <div style="margin-top:8px">ตราประทับ: ${badges.length?badges.join(" · "):"ยังไม่มี"}</div>
+ <div class="sub">สถิติสูงสุด: ${Math.round(S.best.acc*100)}% · ${S.best.st} ดาว</div>
+ <div class="sub">เคล็ดลับ AI: ${TIPS[Math.random()*TIPS.length|0]}</div>`}
+function showEnd(){
+ const c=Object.values(S.a).filter(x=>x.c).length,acc=c/30,win=acc>=PASS;
+ if(acc>=S.best.acc)S.best={acc,st:stars()};sv();win?sfx.star():sfx.bad();
+ modal(`<h2 style="text-align:center">${win?"🏆 ชนะ! ผ่านเกณฑ์ 70%":"📉 ยังไม่ถึง 70%"}</h2>
+ <p style="text-align:center;margin:0">ตอบถูก ${c}/30 ข้อ ${win?"พร้อมลุยสนามจริงแล้ว!":"ลองทบทวนแล้วเล่นอีกครั้ง"}</p>${stats()}
+ <button class="btn" id="ag">เล่นอีกครั้ง</button><button class="btn alt" onclick="closeM()">กลับไปห้องสมุด</button>`);
+ $("#ag").onclick=()=>{S=fr(S.best);sv();closeM();P={x:260,f:1,d:1,w:0};tg=null;hud()}}
+$("#bd").onclick=()=>modal(`<h2>📊 ผลการเรียนรู้ของฉัน</h2>${stats()}<button class="btn" onclick="closeM()">ปิด</button><button class="btn alt" onclick="if(confirm('ล้างความคืบหน้าทั้งหมด?')){S=fr();sv();closeM();hud()}">รีเซ็ตเกม</button>`);
+$("#bs").onclick=()=>{S.snd=S.snd?0:1;sv();hud()};
+
+/* ================================================================
+ 7) หน้าต้อนรับ
+================================================================ */
+function start(){
+ modal(`<h2 style="text-align:center">📚 LibraryTown</h2><p style="text-align:center;margin:0">เมืองห้องสมุดเตรียมสอบภาษาอังกฤษ ม.4–ม.6</p>
+ <ul class="sum"><li><b>แตะ/คลิก</b> ที่พื้นเพื่อเดิน หรือใช้ปุ่มลูกศร · แตะประตูห้องสมุดเพื่อเข้าไป</li>
+ <li><b>ชั้น 1</b> ห้องสรุปเนื้อหา: แตะตู้เพื่ออ่าน · เดินไปบันไดซ้ายสุดเพื่อขึ้น–ลงชั้น</li>
+ <li><b>ชั้น 2</b> ห้องสอบ 30 โต๊ะ: แตะโต๊ะเพื่อเปิดข้อสอบ มีเวลา 30 วินาทีต่อข้อ</li>
+ <li><b>ดาว:</b> ตอบเร็วไม่ใช้คำใบ้ = 3 ⭐ · ใช้คำใบ้ = 1 ⭐ · อ่านตู้สรุป +1 ⭐ · ชั้น 3, 5, 7, 9 ซ่อนดาวโบนัส</li>
+ <li><b>ชนะ:</b> ตอบครบ 30 โต๊ะ ถูกอย่างน้อย 70% (ดาวรวมสูงสุด 100)</li></ul>
+ <div style="text-align:center"><button class="btn" id="go">เริ่มเกม</button><button class="btn alt" id="sd">เสียง: ${S.snd?"เปิด":"ปิด"}</button></div>`);
+ $("#go").onclick=()=>{closeM();scene="out";P={x:300,f:1,d:1,w:0};tg=null;sfx.step();toast("แตะประตูห้องสมุดเพื่อเข้าไป")};
+ $("#sd").onclick=e=>{S.snd=S.snd?0:1;sv();e.target.textContent="เสียง: "+(S.snd?"เปิด":"ปิด");hud()}}
+start();hud();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
